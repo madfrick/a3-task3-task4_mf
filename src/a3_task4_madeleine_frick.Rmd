@@ -6,25 +6,80 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(tidyverse)
+library(janitor)
+library(here)
+library(lubridate)
+library(kableExtra)
 ```
 
-## R Markdown
+Read in the urchins Data
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+urchins <- read.csv(here("data","urchins.csv")) %>% #read in the urchins data
+  clean_names() #clean the names up
 ```
 
-## Including Plots
+Wrangle the urchins data to just include Naples Reef observations for purple urchins observed in Jan 2010
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+purchinjan2010 <- urchins %>% 
+  filter(common_name == "Purple Urchin") %>% #filter to only purple urchins
+  mutate(date = mdy(date)) %>% #convert the date to class date
+  mutate(month = month(date)) %>% #add a new only month column
+  mutate(year = year(date)) %>% #add a year column
+  filter(month == "1") %>% #only observations in the first month (January)
+  filter(year == "2010") %>% #only in the year 2020
+  filter(site == "NAPL") #only for Naples site
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Look and consider histograms and qqplots for the size distribution
+
+```{r}
+ggplot(data = purchinjan2010, aes(x = size)) + #histogram with the data as purple urchin one
+  geom_histogram(stat = "bin") + #make a histogram
+  facet_wrap(~treatment) #make two histograms according to the two different treatments
+
+ggplot(data = purchinjan2010, aes(sample = size)) +
+  geom_qq()+ #make a qqplot
+  facet_wrap(~treatment) #make the qqplot different according to treatment
+```
+
+The data for the annual urchins is in a comb pattern with a mostly uniform spread and the control urchins looks more normally distributed with a skew to the right. It looks like the annual purple urchin size in Naples Reef in January 2010 might be larger for the annual than the control group. The qqplot shows us that the data for both different treatments is not necessarily very close to normal, as they do not produce straight lines when the theoretical is graphed against the sample. The lines have more of a curve to them, showing them that there is not very much distribution.
+
+```{r}
+purchin_summary <- purchinjan2010 %>% #take the purple urchin dataset
+  group_by(treatment) %>% #group by the different treatments
+  summarize(mean = mean(size),#finds the mean of the size measurements
+            median = median(size), #same but ^
+            sd = sd(size), #again
+            n = n()) %>% 
+  kable(col.names = c("Treatment", #this names all of the columns
+                      "Mean",
+                      "Median", 
+                      "Standard Deviation",
+                      "Sample Size")) %>% 
+  kable_styling() #make the table pretty
+
+purchin_summary #show the table
+
+```
+
+
+```{r}
+
+annual_sample <- purchinjan2010 %>% #this is making a vector of the annual sizes
+  filter(treatment == "ANNUAL") %>% 
+  pull(size)
+
+control_sample <- purchinjan2010 %>% #this is making a vector of the control sizes
+  filter(treatment == "CONTROL") %>% 
+  pull(size)
+#then run a two sample t-test on these vectors
+
+t.test(annual_sample, control_sample) #run a t test on x, being the annual and y being the control
+
+```
+
+Since the p value is somewhat relatively high, there is less evidence of differences between the two population means of the control and annual samples. The 95% confidence interval of -0.13 to 0.52 means that we are 95% confident that the difference between the two means is between that amount of each other, where 0 is included, 0 being no difference in the means. The actual mean of the annual group was 3.9 and the actual mean of the control group was 3.7, which are close to the same size. The standard deviation for the annual group was .96 and .86 for the control group, both showing around 1. This means if they were plotted on the same graph with the mean value near 3.8 in the center, one standard deviation of about 1 on either side of both groups would mainly overlap one another. The meaning of tje p value is that there is a 25.3% chance that I found two samples with means that are least as different as the ones that I found by random chance if the null hypothesis was true; they were drawn from populations with the same mean.
